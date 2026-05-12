@@ -31,7 +31,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 try:
-    with open('model (5).pkl', 'rb') as f:
+    with open('model.pkl', 'rb') as f:
         model = pickle.load(f)
 except Exception as e:
     st.error(f"Error: {e}")
