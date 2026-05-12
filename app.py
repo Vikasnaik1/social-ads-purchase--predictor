@@ -258,7 +258,7 @@ hr { border-color: #1c2332 !important; margin: 1.5rem 0 !important; }
 
 @st.cache_resource
 def load_model():
-    with open("model7.pkl", "rb") as f:
+    with open("model8.pkl", "rb") as f:
         return pickle.load(f)
 
 
