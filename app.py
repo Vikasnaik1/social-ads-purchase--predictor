@@ -1,5 +1,5 @@
 import streamlit as st
-import joblib
+import pickle
 import numpy as np
 import pandas as pd
 
@@ -176,16 +176,16 @@ h1 {
     font-weight: 500;
 }
 .warning-box {
-    background-color: #0d1a14;
-    border: 1px solid #1a6b3a;
+    background-color: #1a1400;
+    border: 1px solid #5a4200;
     border-radius: 8px;
     padding: 1rem 1.2rem;
     font-size: 0.8rem;
-    color: #4a7c59;
+    color: #7a6030;
     line-height: 1.7;
     margin-bottom: 1rem;
 }
-.warning-box strong { color: #34d174; }
+.warning-box strong { color: #c8a040; }
 .placeholder-box {
     border: 1px dashed #1c2332;
     border-radius: 10px;
@@ -201,15 +201,16 @@ hr { border-color: #1c2332 !important; margin: 1.5rem 0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
+
 @st.cache_resource
 def load_model():
-    # Load full pipeline: preprocessing + model
-    return joblib.load("model9.pkl")
+    with open("model9.pkl", "rb") as f:
+        return pickle.load(f)
 
 model = load_model()
 
-# This threshold is no longer hardcoded behavior, but kept for display
 SALARY_THRESHOLD = 103000
+
 
 with st.sidebar:
     st.markdown("""
@@ -225,21 +226,23 @@ with st.sidebar:
 
     gender = st.selectbox("Gender", ["Male", "Female"], index=0)
     age    = st.slider("Age", min_value=18, max_value=75, value=45, step=1)
-    salary = st.number_input("Estimated Salary ($)", min_value=10000, max_value=500000, value=60000, step=1000)
+    salary = st.number_input("Estimated Salary ($)", min_value=10000, max_value=500000, value=110000, step=1000)
 
     st.markdown("---")
 
     st.markdown("""
     <table class='info-table'>
-        <tr><td>Model</td><td>XGBoost</td></tr>
-        <tr><td>Pipeline</td><td>Preprocessing + Model</td></tr>
-        <tr><td>Features</td><td>Gender, Age, Salary + Engineered</td></tr>
-        <tr><td>Version</td><td>2.0.0</td></tr>
+        <tr><td>Model</td><td>SVC</td></tr>
+        <tr><td>Kernel</td><td>RBF</td></tr>
+        <tr><td>Features</td><td>Gender, Age, Salary</td></tr>
+        <tr><td>Buy threshold</td><td>Salary &gt; $103,000</td></tr>
+        <tr><td>Version</td><td>1.0.0</td></tr>
     </table>
     """, unsafe_allow_html=True)
 
+
 st.markdown("<h1>Customer Purchase Predictor</h1>", unsafe_allow_html=True)
-st.markdown("<div class='page-sub'>Predict whether a customer will purchase a product based on learned behavior patterns.</div>", unsafe_allow_html=True)
+st.markdown("<div class='page-sub'>Predict whether a customer will purchase a product based on their profile.</div>", unsafe_allow_html=True)
 
 col_left, col_right = st.columns([3, 2], gap="large")
 
@@ -263,12 +266,16 @@ with col_left:
 
     st.markdown(f"""
     <div class='warning-box'>
-        <strong>New Model v2.0 - Behavior Based Predictions</strong><br>
-        This XGBoost model was trained with feature scaling and engineered interactions between Age, Gender, and Salary.<br><br>
-        <strong>Salary no longer dominates predictions.</strong> The model learned real customer behavior patterns from historical data.
-        Even with low salary, older customers may be predicted as buyers if the pattern exists in training data.
-        <br><br>
-        Current profile: <strong>{gender}, {age} years, ${salary:,}</strong>
+        <strong>Important — How This Model Predicts</strong><br>
+        This SVC model was trained on unscaled data with a very small gamma value,
+        which means <strong>Estimated Salary is the dominant feature</strong>.
+        Age and Gender have minimal effect on the prediction.<br><br>
+        Customers with salary <strong>above $103,000</strong> are predicted to buy.<br>
+        Customers with salary <strong>below $103,000</strong> are predicted not to buy.<br><br>
+        Current salary <strong>${salary:,}</strong> is
+        <strong>{'above' if salary >= SALARY_THRESHOLD else 'below'}</strong>
+        the threshold — result will be
+        <strong>{'Will Buy' if salary >= SALARY_THRESHOLD else 'Will Not Buy'}</strong>.
     </div>
     """, unsafe_allow_html=True)
 
@@ -277,7 +284,7 @@ with col_left:
         <div class='card-title'>What the result means</div>
         <div style='font-size:0.82rem;color:#4a5568;line-height:1.8;'>
             <strong style='color:#34d174;'>Will Buy</strong> — The customer profile matches
-            historical buyers based on age, gender, and salary interactions.<br>
+            historical buyers from the Social Network Ads dataset.<br>
             <strong style='color:#f87171;'>Will Not Buy</strong> — The customer profile does
             not match typical buyer patterns. Consider targeting with a different offer.
         </div>
@@ -288,19 +295,17 @@ with col_right:
     run = st.button("RUN PREDICTION")
 
     if run:
-        # IMPORTANT: No manual encoding. Pipeline handles Gender string, Age, Salary
-        # Pipeline also does feature engineering internally
-        df_input = pd.DataFrame(
-            [[gender, age, salary]],
+        gender_val = 1 if gender == "Male" else 0
+        df_input   = pd.DataFrame(
+            [[gender_val, age, salary]],
             columns=["Gender", "Age", "EstimatedSalary"]
         )
 
-        prediction = model.predict(df_input)[0]
-        proba = model.predict_proba(df_input)[0]
-        
-        # Probability of predicted class = model confidence
-        confidence_pct = int(proba[1] * 100) if prediction == 1 else int(proba[0] * 100)
-        buy_prob = int(proba[1] * 100)
+        prediction     = model.predict(df_input)[0]
+        decision_score = model.decision_function(df_input)[0]
+
+        confidence_pct = min(int((abs(decision_score) / 3.0) * 100), 99)
+        confidence_pct = max(confidence_pct, 5)
 
         if prediction == 1:
             st.markdown(f"""
@@ -309,11 +314,11 @@ with col_right:
                 <div class='result-title' style='color:#34d174;'>Will Buy</div>
                 <div class='result-desc'>This customer is likely to purchase the product.</div>
                 <div class='bar-wrap'>
-                    <div class='bar-fill-buy' style='width:{buy_prob}%;'></div>
+                    <div class='bar-fill-buy' style='width:{confidence_pct}%;'></div>
                 </div>
                 <div class='bar-labels'>
-                    <span>Purchase Probability</span>
-                    <span>{buy_prob}%</span>
+                    <span>Model Confidence</span>
+                    <span>{confidence_pct}%</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -325,11 +330,11 @@ with col_right:
                 <div class='result-title' style='color:#f87171;'>Will Not Buy</div>
                 <div class='result-desc'>This customer is unlikely to purchase right now.</div>
                 <div class='bar-wrap'>
-                    <div class='bar-fill-nobuy' style='width:{buy_prob}%;'></div>
+                    <div class='bar-fill-nobuy' style='width:{confidence_pct}%;'></div>
                 </div>
                 <div class='bar-labels'>
-                    <span>Purchase Probability</span>
-                    <span>{buy_prob}%</span>
+                    <span>Model Confidence</span>
+                    <span>{confidence_pct}%</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -341,9 +346,9 @@ with col_right:
                 <tr><td>Gender</td><td>{gender}</td></tr>
                 <tr><td>Age</td><td>{age}</td></tr>
                 <tr><td>Salary</td><td>${salary:,}</td></tr>
-                <tr><td>Buy Probability</td><td>{buy_prob}%</td></tr>
-                <tr><td>No-Buy Probability</td><td>{100-buy_prob}%</td></tr>
-                <tr><td>Predicted Class</td><td>{'Buy' if prediction == 1 else 'No Buy'}</td></tr>
+                <tr><td>Decision Score</td><td>{decision_score:.4f}</td></tr>
+                <tr><td>Raw Output Class</td><td>{int(prediction)}</td></tr>
+                <tr><td>Salary vs Threshold</td><td>${salary:,} vs $103,000</td></tr>
             </table>
         </div>
         """, unsafe_allow_html=True)
@@ -359,8 +364,8 @@ with col_right:
 st.markdown("---")
 st.markdown("""
 <div style='display:flex;justify-content:space-between;font-size:0.65rem;color:#1c2332;letter-spacing:0.05em;'>
-    <span>Purchase Predictor v2.0.0</span>
-    <span>XGBoost · Feature Engineered · Social Network Ads</span>
+    <span>Purchase Predictor v1.0.0</span>
+    <span>SVC · RBF Kernel · Social Network Ads</span>
     <span>Deployed on Streamlit</span>
 </div>
 """, unsafe_allow_html=True)
