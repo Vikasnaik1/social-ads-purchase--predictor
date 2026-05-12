@@ -204,7 +204,7 @@ hr { border-color: #1c2332 !important; margin: 1.5rem 0 !important; }
 @st.cache_resource
 def load_model():
     # Load full pipeline: preprocessing + model
-    return joblib.load("model.pkl")
+    return joblib.load("model9.pkl")
 
 model = load_model()
 
